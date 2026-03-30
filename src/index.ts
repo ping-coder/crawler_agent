@@ -1,135 +1,87 @@
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
-import { navigate, extractContent, searchWeb } from "./browser";
-import { CsvWriterTool, GaokaoData } from "./csvWriter";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { CsvWriterTool, GaokaoData } from "./csvWriter.js";
 
-const server = new Server({
-  name: "crawler-agent-mcpserver",
-  version: "1.0.0",
-}, {
-  capabilities: {
-    tools: {},
-  },
-});
+async function runCrawler() {
+  console.log("Starting Chrome MCP Server child process...");
 
-const csvWriter = new CsvWriterTool();
+  // Launch the official Chrome MCP server
+  const transport = new StdioClientTransport({
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-puppeteer"],
+  });
 
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: [
-      {
-        name: "chrome_navigate",
-        description: "Navigate Chrome to a specific URL",
-        inputSchema: {
-          type: "object",
-          properties: {
-            url: { type: "string" },
-          },
-          required: ["url"],
-        },
-      },
-      {
-        name: "chrome_extract_content",
-        description: "Extract text content from the current page. Providing a selector extracts just that element.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            selector: { type: "string" },
-          },
-        },
-      },
-      {
-        name: "chrome_search_web",
-        description: "Search the web using Chrome to find resources",
-        inputSchema: {
-          type: "object",
-          properties: {
-            query: { type: "string" },
-          },
-          required: ["query"],
-        },
-      },
-      {
-        name: "write_gaokao_csv",
-        description: "Append records to the local Gaokao CSV file. Data should include: university, year, major, province, type, scoreLine, admissionCount, etc.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            records: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  university: { type: "string" },
-                  year: { type: "number" },
-                  major: { type: "string" },
-                  province: { type: "string" },
-                  type: { type: "string" },
-                  scoreLine: { type: "number" },
-                  admissionCount: { type: "number" },
-                  groupName: { type: "string" },
-                  groupScoreLine: { type: "number" },
-                  transferRules: { type: "string" },
-                  postgradRate: { type: "number" },
-                  undergradCount: { type: "number" },
-                  furtherStudyRate: { type: "number" },
-                  furtherStudySchools: { type: "string" },
-                  recruitmentFairs: { type: "string" },
-                  famousEnterprises: { type: "string" },
-                  recruitedCount: { type: "number" }
-                },
-                required: ["university", "year", "major", "province", "type", "scoreLine", "admissionCount"]
-              }
-            }
-          },
-          required: ["records"],
-        },
-      }
-    ],
-  };
-});
+  const client = new Client(
+    { name: "crawler-agent-client", version: "1.0.0" },
+    { capabilities: { tools: {} } }
+  );
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name === "chrome_navigate") {
-    const args = request.params.arguments as { url: string };
-    const title = await navigate(args.url);
-    return {
-      content: [{ type: "text", text: `Navigated to ${args.url}. Page title: "${title}"` }],
-    };
-  } else if (request.params.name === "chrome_extract_content") {
-    const args = request.params.arguments as { selector?: string };
-    const content = await extractContent(args.selector);
-    return {
-      content: [{ type: "text", text: content }],
-    };
-  } else if (request.params.name === "chrome_search_web") {
-    const args = request.params.arguments as { query: string };
-    const results = await searchWeb(args.query);
-    return {
-      content: [{ type: "text", text: results }],
-    };
-  } else if (request.params.name === "write_gaokao_csv") {
-    const args = request.params.arguments as { records: GaokaoData[] };
-    await csvWriter.writeRecords(args.records);
-    return {
-      content: [{ type: "text", text: `Successfully wrote ${args.records.length} records to CSV.` }],
-    };
+  console.log("Connecting MCP Client...");
+  await client.connect(transport);
+  console.log("Connected successfully!");
+
+  // List tools to make sure server is working
+  const toolsResponse = await client.listTools();
+  console.log("Available Chrome Tools:", toolsResponse.tools.map(t => t.name).join(", "));
+
+  // Target website logic
+  const targetUrl = "https://www.bing.com/"; // Using a safe test page for now
+  console.log(`Navigating to ${targetUrl}...`);
+
+  await client.callTool({
+    name: "puppeteer_navigate",
+    arguments: { url: targetUrl },
+  });
+
+  console.log("Extracting titles via js evaluation...");
+  const evalResult: any = await client.callTool({
+    name: "puppeteer_evaluate",
+    arguments: {
+      script: `
+        // Custom JS injected into the Chrome instance
+        const results = [];
+        results.push(document.title);
+        return results;
+      `
+    },
+  });
+
+  console.log("Evaluation Result:", evalResult);
+
+  // Parse result safely and write to CSV
+  // Note: The structure here is simplified for a test run
+  let titleFound = "Unknown";
+  if (evalResult.content && evalResult.content.length > 0) {
+     const text = evalResult.content[0].text;
+     try {
+       // puppeteer_evaluate returns JSON strings inside 'text' field
+       const parsedItems = JSON.parse(text);
+       if (Array.isArray(parsedItems)) titleFound = parsedItems[0];
+     } catch(e) {
+         titleFound = text;
+     }
   }
 
-  throw new Error(`Tool not found: ${request.params.name}`);
-});
+  const csvWriter = new CsvWriterTool();
+  const mockData: GaokaoData[] = [{
+      university: titleFound,
+      year: 2024,
+      major: "Test Major",
+      province: "Guangdong",
+      type: "Science",
+      scoreLine: 600,
+      admissionCount: 50
+  }];
 
-async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("Crawler Agent MCP Server running on stdio");
+  await csvWriter.writeRecords(mockData);
+  console.log("Wrote mock gaokao data to CSV.");
+
+  console.log("Closing MCP connection...");
+  await transport.close();
+  console.log("Done.");
 }
 
-main().catch((error) => {
-  console.error("Server error:", error);
+runCrawler().catch((err) => {
+  console.error("Fatal Error running crawler:", err);
   process.exit(1);
 });
