@@ -39,10 +39,11 @@ async function runCrawler() {
     name: "puppeteer_evaluate",
     arguments: {
       script: `
-        // Custom JS injected into the Chrome instance
-        const results = [];
-        results.push(document.title);
-        return results;
+        (() => {
+          const results = [];
+          results.push(document.title);
+          return results;
+        })();
       `
     },
   });
@@ -80,6 +81,9 @@ async function runCrawler() {
   console.log("Closing MCP connection...");
   await transport.close();
   console.log("Done.");
+  
+  // Puppeteer MCP server currently throws 'Not connected' when forcefully closed, so we explicitly exit
+  process.exit(0);
 }
 
 runCrawler().catch((err) => {
