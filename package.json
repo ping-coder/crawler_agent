@@ -1,0 +1,27 @@
+{
+  "name": "crawler_agent",
+  "version": "1.0.0",
+  "description": "A basic crawler agent project.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "tsx src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.28.0",
+    "csv-writer": "^1.6.0",
+    "dotenv": "^17.3.1",
+    "puppeteer": "^24.40.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  },
+  "type": "module"
+}
