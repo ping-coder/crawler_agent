@@ -9,11 +9,12 @@ async function runCrawler() {
   const transport = new StdioClientTransport({
     command: "npx",
     args: ["-y", "@modelcontextprotocol/server-puppeteer"],
+    env: process.env as Record<string, string>
   });
 
   const client = new Client(
     { name: "crawler-agent-client", version: "1.0.0" },
-    { capabilities: { tools: {} } }
+    { capabilities: {} }
   );
 
   console.log("Connecting MCP Client...");
